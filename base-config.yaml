@@ -1,0 +1,12 @@
+# List of subreddits to fetch images from.
+subreddits:
+- cats
+- catpictures
+- catpics
+# Number of messages before messages are considered a monologue that needs to be disrupted.
+min_monologue_size: 10
+# Maximum number of seconds between messages for a monologue to end.
+max_monologue_delay: 300
+# Cooldown in seconds after disrupting a monologue during which messages are counted,
+# but monologues aren't disrupted even if the message count goes over the limit.
+disrupt_cooldown: 10

@@ -1,0 +1,9 @@
+maubot: 0.1.0
+id: xyz.maubot.disruptor
+version: 0.1.0
+license: AGPL-3.0-or-later
+modules:
+- disruptor
+main_class: DisruptorBot
+extra_files:
+- base-config.yaml
