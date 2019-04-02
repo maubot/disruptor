@@ -7,3 +7,4 @@ modules:
 main_class: DisruptorBot
 extra_files:
 - base-config.yaml
+database: true

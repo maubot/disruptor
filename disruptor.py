@@ -16,6 +16,7 @@
 from typing import Dict, Set, List, Type, Tuple, Optional
 from time import time
 
+from sqlalchemy import Table, Column, MetaData, String, Boolean, Integer, BigInteger, and_
 import magic
 
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
@@ -80,6 +81,8 @@ class MonologueInfo:
 
 
 class DisruptorBot(Plugin):
+    post: Table
+
     monologue_size: Dict[RoomID, MonologueInfo]
     cache: List[dict]
     handled_ids: Set[str]
@@ -88,6 +91,19 @@ class DisruptorBot(Plugin):
         await super().start()
         self.config.load_and_update()
 
+        metadata = MetaData()
+        self.post = Table("posts", metadata,
+                          Column("id", String, primary_key=True),
+                          Column("subreddit", String),
+                          Column("permalink", String),
+                          Column("title", String),
+                          Column("url", String),
+                          Column("thumbnail_url", String),
+                          Column("thumbnail_width", Integer),
+                          Column("thumbnail_height", Integer),
+                          Column("used", Boolean))
+        metadata.create_all(self.database)
+
         self.monologue_size = {}
         self.cache = []
         self.handled_ids = set()
@@ -95,7 +111,7 @@ class DisruptorBot(Plugin):
         await self.load_disruption_content()
 
     async def fetch_posts(self, subreddit: str) -> dict:
-        resp = await self.http.get(f"https://www.reddit.com/r/{subreddit}/.json?raw_json=1")
+        resp = await self.http.get(f"https://www.reddit.com/r/{subreddit}/hot.json?raw_json=1")
         return await resp.json()
 
     async def load_disruption_content(self) -> None:
@@ -124,6 +140,8 @@ class DisruptorBot(Plugin):
 
     @event.on(EventType.ROOM_MESSAGE)
     async def monologue_detector(self, evt: MessageEvent) -> None:
+        if evt.content.msgtype == MessageType.NOTICE:
+            return
         monologue = self.monologue_size.setdefault(evt.room_id, MonologueInfo())
         if monologue.is_outdated(self.config["max_monologue_delay"]):
             monologue.reset()
@@ -132,7 +150,7 @@ class DisruptorBot(Plugin):
                                     self.config["disrupt_cooldown"]):
             self.log.debug(f"Disrupting monologue in {evt.room_id}: {monologue}")
             await self.disrupt(evt.room_id)
-            monologue.reset()
+            monologue.reset(disrupted=True)
 
     async def reupload(self, url: str) -> Tuple[ContentURI, str, bytes]:
         resp = await self.http.get(url)
