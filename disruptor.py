@@ -123,6 +123,7 @@ class DisruptorBot(Plugin):
             self.log.info(f"{n} posts cached from {subreddit}")
 
     @event.on(EventType.ROOM_MESSAGE)
+    @event.on(EventType.ROOM_ENCRYPTED)
     async def monologue_detector(self, evt: MessageEvent) -> None:
         monologue = self.monologue_size.setdefault(evt.room_id, MonologueInfo())
         if monologue.is_outdated(self.config["max_monologue_delay"]):
