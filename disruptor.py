@@ -20,7 +20,7 @@ import magic
 
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from mautrix.types import (EventType, UserID, RoomID, MediaMessageEventContent, ImageInfo,
-                           ThumbnailInfo, ContentURI, MessageType)
+                           ThumbnailInfo, ContentURI, MessageType, GenericEvent)
 
 from maubot import Plugin, MessageEvent
 from maubot.handlers import event
@@ -122,8 +122,11 @@ class DisruptorBot(Plugin):
                     n += 1
             self.log.info(f"{n} posts cached from {subreddit}")
 
-    @event.on(EventType.ROOM_MESSAGE)
     @event.on(EventType.ROOM_ENCRYPTED)
+    async def encrypted_monologue_detector(self, evt: GenericEvent) -> None:
+        await self.monologue_detector(evt)
+
+    @event.on(EventType.ROOM_MESSAGE)
     async def monologue_detector(self, evt: MessageEvent) -> None:
         monologue = self.monologue_size.setdefault(evt.room_id, MonologueInfo())
         if monologue.is_outdated(self.config["max_monologue_delay"]):
