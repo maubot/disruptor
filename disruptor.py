@@ -15,12 +15,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Dict, Set, List, Type, Tuple, Optional
 from time import time
+import asyncio
 
 import magic
 
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from mautrix.types import (EventType, UserID, RoomID, MediaMessageEventContent, ImageInfo,
-                           ThumbnailInfo, ContentURI, MessageType, GenericEvent)
+                           ThumbnailInfo, ContentURI, MessageType, GenericEvent,
+                           BaseMessageEventContent)
 
 from maubot import Plugin, MessageEvent
 from maubot.handlers import event
@@ -46,6 +48,7 @@ class MonologueInfo:
     streak: int
     last_message: float
     prev_disrupt: float
+    lock: asyncio.Lock
 
     def __init__(self, user_id: Optional[UserID] = None, streak: int = 0, last_message: float = 0,
                  prev_disrupt: float = 0) -> None:
@@ -53,6 +56,7 @@ class MonologueInfo:
         self.streak = streak
         self.last_message = last_message
         self.prev_disrupt = prev_disrupt
+        self.lock = asyncio.Lock()
 
     def message(self, user_id: UserID) -> None:
         if self.user_id == user_id:
@@ -128,15 +132,18 @@ class DisruptorBot(Plugin):
 
     @event.on(EventType.ROOM_MESSAGE)
     async def monologue_detector(self, evt: MessageEvent) -> None:
+        if isinstance(evt.content, BaseMessageEventContent) and evt.content.get_edit():
+            return
         monologue = self.monologue_size.setdefault(evt.room_id, MonologueInfo())
         if monologue.is_outdated(self.config["max_monologue_delay"]):
             monologue.reset()
         monologue.message(evt.sender)
-        if monologue.should_disrupt(self.config["min_monologue_size"],
-                                    self.config["disrupt_cooldown"]):
-            self.log.debug(f"Disrupting monologue in {evt.room_id}: {monologue}")
-            await self.disrupt(evt.room_id)
-            monologue.reset()
+        async with monologue.lock:
+            if monologue.should_disrupt(self.config["min_monologue_size"],
+                                        self.config["disrupt_cooldown"]):
+                self.log.debug(f"Disrupting monologue in {evt.room_id}: {monologue}")
+                await self.disrupt(evt.room_id)
+                monologue.reset()
 
     async def reupload(self, url: str) -> Tuple[ContentURI, str, bytes]:
         resp = await self.http.get(url)
