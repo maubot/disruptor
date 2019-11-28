@@ -25,7 +25,7 @@ from mautrix.types import (EventType, UserID, RoomID, MediaMessageEventContent, 
                            BaseMessageEventContent)
 
 from maubot import Plugin, MessageEvent
-from maubot.handlers import event
+from maubot.handlers import event, command
 
 try:
     from PIL import Image
@@ -87,6 +87,7 @@ class DisruptorBot(Plugin):
     monologue_size: Dict[RoomID, MonologueInfo]
     cache: List[dict]
     handled_ids: Set[str]
+    reload_lock: asyncio.Lock
 
     async def start(self):
         await super().start()
@@ -95,12 +96,18 @@ class DisruptorBot(Plugin):
         self.monologue_size = {}
         self.cache = []
         self.handled_ids = set()
+        self.reload_lock = asyncio.Lock()
 
         await self.load_disruption_content()
 
     async def fetch_posts(self, subreddit: str) -> dict:
         resp = await self.http.get(f"https://www.reddit.com/r/{subreddit}/.json?raw_json=1")
         return await resp.json()
+
+    async def reload_disruption_content(self) -> None:
+        async with self.reload_lock:
+            if len(self.cache) < 5:
+                await self.load_disruption_content()
 
     async def load_disruption_content(self) -> None:
         for subreddit in self.config["subreddits"]:
@@ -152,8 +159,14 @@ class DisruptorBot(Plugin):
         mxc = await self.client.upload_media(data, mime_type)
         return mxc, mime_type, data
 
+    @command.passive(r"^\U0001f408\ufe0f?$")
+    async def cat_command(self, evt: MessageEvent, key) -> None:
+        await self.disrupt(evt.room_id)
+
     async def disrupt(self, room_id: RoomID) -> None:
         disruption_content = self.cache.pop()
+        if len(self.cache) < 5:
+            asyncio.ensure_future(self.reload_disruption_content(), loop=self.loop)
         mxc, mime, data = await self.reupload(disruption_content["image"])
         tn_mxc, tn_mime, tn_data = await self.reupload(disruption_content["thumbnail"]["url"])
         info = ImageInfo(
