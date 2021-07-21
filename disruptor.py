@@ -14,9 +14,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Dict, Set, List, Type, Tuple, Optional
+from collections import defaultdict
 from time import time
 import asyncio
 
+from attr import dataclass
 import magic
 
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
@@ -41,6 +43,8 @@ class Config(BaseProxyConfig):
         helper.copy("min_monologue_size")
         helper.copy("max_monologue_delay")
         helper.copy("disrupt_cooldown")
+        helper.copy("request_rate")
+        helper.copy("request_per")
 
 
 class MonologueInfo:
@@ -83,8 +87,33 @@ class MonologueInfo:
         return f"MonologueInfo(user_id={self.user_id}, streak={self.streak}, last_message={self.last_message}, prev_disrupt={self.prev_disrupt})"
 
 
+@dataclass
+class ManualRateLimit:
+    rate: float = 3.0
+    per: float = 3600.0
+    allowance: float = 0.0
+    last_request: float = 0.0
+
+    def __attrs_post_init__(self) -> None:
+        self.allowance = self.rate
+
+    def request(self) -> bool:
+        now = time()
+        time_passed = now - self.last_request
+        self.last_request = now
+        self.allowance += time_passed * (self.rate / self.per)
+        if self.allowance > self.rate:
+            self.allowance = self.rate
+        if self.allowance < 1.0:
+            return False
+        else:
+            self.allowance -= 1.0
+            return True
+
+
 class DisruptorBot(Plugin):
     monologue_size: Dict[RoomID, MonologueInfo]
+    manual_ratelimits: Dict[RoomID, ManualRateLimit]
     cache: List[dict]
     handled_ids: Set[str]
     reload_lock: asyncio.Lock
@@ -93,7 +122,9 @@ class DisruptorBot(Plugin):
         await super().start()
         self.config.load_and_update()
 
-        self.monologue_size = {}
+        self.monologue_size = defaultdict(lambda: MonologueInfo())
+        self.manual_ratelimits = defaultdict(lambda: ManualRateLimit(
+            rate=float(self.config["request_rate"]), per=float(self.config["request_per"])))
         self.cache = []
         self.handled_ids = set()
         self.reload_lock = asyncio.Lock()
@@ -141,7 +172,7 @@ class DisruptorBot(Plugin):
     async def monologue_detector(self, evt: MessageEvent) -> None:
         if isinstance(evt.content, BaseMessageEventContent) and evt.content.get_edit():
             return
-        monologue = self.monologue_size.setdefault(evt.room_id, MonologueInfo())
+        monologue = self.monologue_size[evt.room_id]
         if monologue.is_outdated(self.config["max_monologue_delay"]):
             monologue.reset()
         monologue.message(evt.sender)
@@ -160,8 +191,11 @@ class DisruptorBot(Plugin):
         return mxc, mime_type, data
 
     @command.passive(r"^\U0001f408\ufe0f?$")
-    async def cat_command(self, evt: MessageEvent, key) -> None:
-        await self.disrupt(evt.room_id)
+    async def cat_command(self, evt: MessageEvent, _: str) -> None:
+        if self.manual_ratelimits[evt.room_id].request():
+            await self.disrupt(evt.room_id)
+        else:
+            await evt.reply("\U0001f63e")
 
     async def disrupt(self, room_id: RoomID) -> None:
         disruption_content = self.cache.pop()

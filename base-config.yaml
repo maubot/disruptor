@@ -10,3 +10,7 @@ max_monologue_delay: 300
 # Cooldown in seconds after disrupting a monologue during which messages are counted,
 # but monologues aren't disrupted even if the message count goes over the limit.
 disrupt_cooldown: 10
+# How many cat pictures can be manually requested per time unit per room
+request_rate: 3
+# The time unit for the above, as seconds
+request_per: 600
