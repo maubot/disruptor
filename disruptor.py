@@ -113,7 +113,8 @@ class ManualRateLimit:
 
 class DisruptorBot(Plugin):
     monologue_size: Dict[RoomID, MonologueInfo]
-    manual_ratelimits: Dict[RoomID, ManualRateLimit]
+    manual_room_ratelimits: Dict[RoomID, ManualRateLimit]
+    manual_user_ratelimits: Dict[UserID, ManualRateLimit]
     cache: List[dict]
     handled_ids: Set[str]
     reload_lock: asyncio.Lock
@@ -123,7 +124,9 @@ class DisruptorBot(Plugin):
         self.config.load_and_update()
 
         self.monologue_size = defaultdict(lambda: MonologueInfo())
-        self.manual_ratelimits = defaultdict(lambda: ManualRateLimit(
+        self.manual_room_ratelimits = defaultdict(lambda: ManualRateLimit(
+            rate=float(self.config["request_rate"]), per=float(self.config["request_per"])))
+        self.manual_user_ratelimits = defaultdict(lambda: ManualRateLimit(
             rate=float(self.config["request_rate"]), per=float(self.config["request_per"])))
         self.cache = []
         self.handled_ids = set()
@@ -192,7 +195,7 @@ class DisruptorBot(Plugin):
 
     @command.passive(r"^\U0001f408\ufe0f?$")
     async def cat_command(self, evt: MessageEvent, _: str) -> None:
-        if self.manual_ratelimits[evt.room_id].request():
+        if self.manual_user_ratelimits[evt.sender].request() and self.manual_room_ratelimits[evt.room_id].request():
             await self.disrupt(evt.room_id)
         else:
             await evt.reply("\U0001f63e")
