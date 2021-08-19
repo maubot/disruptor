@@ -43,8 +43,12 @@ class Config(BaseProxyConfig):
         helper.copy("min_monologue_size")
         helper.copy("max_monologue_delay")
         helper.copy("disrupt_cooldown")
-        helper.copy("request_rate")
-        helper.copy("request_per")
+        helper.copy("user_ratelimit.rate")
+        helper.copy("user_ratelimit.per")
+        helper.copy("user_ratelimit.message")
+        helper.copy("room_ratelimit.rate")
+        helper.copy("room_ratelimit.per")
+        helper.copy("room_ratelimit.message")
 
 
 class MonologueInfo:
@@ -125,9 +129,11 @@ class DisruptorBot(Plugin):
 
         self.monologue_size = defaultdict(lambda: MonologueInfo())
         self.manual_room_ratelimits = defaultdict(lambda: ManualRateLimit(
-            rate=float(self.config["request_rate"]), per=float(self.config["request_per"])))
+            rate=float(self.config["room_ratelimit.rate"]),
+            per=float(self.config["room_ratelimit.per"])))
         self.manual_user_ratelimits = defaultdict(lambda: ManualRateLimit(
-            rate=float(self.config["request_rate"]), per=float(self.config["request_per"])))
+            rate=float(self.config["user_ratelimit.rate"]),
+            per=float(self.config["user_ratelimit.per"])))
         self.cache = []
         self.handled_ids = set()
         self.reload_lock = asyncio.Lock()
@@ -195,10 +201,13 @@ class DisruptorBot(Plugin):
 
     @command.passive(r"^\U0001f408\ufe0f?$")
     async def cat_command(self, evt: MessageEvent, _: str) -> None:
-        if self.manual_user_ratelimits[evt.sender].request() and self.manual_room_ratelimits[evt.room_id].request():
-            await self.disrupt(evt.room_id)
+        if self.manual_user_ratelimits[evt.sender].request():
+            if self.manual_room_ratelimits[evt.room_id].request():
+                await self.disrupt(evt.room_id)
+            else:
+                await evt.reply(self.config["room_ratelimit.message"])
         else:
-            await evt.reply("\U0001f63e")
+            await evt.reply(self.config["user_ratelimit.message"])
 
     async def disrupt(self, room_id: RoomID) -> None:
         disruption_content = self.cache.pop()

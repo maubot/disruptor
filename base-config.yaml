@@ -10,7 +10,17 @@ max_monologue_delay: 300
 # Cooldown in seconds after disrupting a monologue during which messages are counted,
 # but monologues aren't disrupted even if the message count goes over the limit.
 disrupt_cooldown: 10
-# How many cat pictures can be manually requested per time unit per room
-request_rate: 3
-# The time unit for the above, as seconds
-request_per: 600
+# Rate limits for manual cat requests.
+user_ratelimit:
+  # How many cat pictures can be manually requested per time unit per room
+  rate: 3
+  # The time unit for the above, as seconds
+  per: 3600
+  # The message to send when the rate limit is exceeded.
+  message: You have exceeded your hourly cat allowance.
+# Same rate limit as above, but per room instead of per user.
+# Both per user and per room rate limits are checked before allowing a cat request.
+room_ratelimit:
+  rate: 3
+  per: 86400
+  message: This room has exceeded its daily cat allowance.
