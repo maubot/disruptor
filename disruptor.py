@@ -206,6 +206,7 @@ class DisruptorBot(Plugin):
                 await self.disrupt(evt.room_id)
             else:
                 await evt.reply(self.config["room_ratelimit.message"])
+                self.manual_user_ratelimits[evt.sender].allowance += 1
         else:
             await evt.reply(self.config["user_ratelimit.message"])
 
