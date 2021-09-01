@@ -17,6 +17,7 @@ from typing import Dict, Set, List, Type, Tuple, Optional
 from collections import defaultdict
 from time import time
 import asyncio
+import random
 
 from attr import dataclass
 import magic
@@ -43,6 +44,7 @@ class Config(BaseProxyConfig):
         helper.copy("min_monologue_size")
         helper.copy("max_monologue_delay")
         helper.copy("disrupt_cooldown")
+        helper.copy("disrupt_probability")
         helper.copy("user_ratelimit.rate")
         helper.copy("user_ratelimit.per")
         helper.copy("user_ratelimit.message")
@@ -134,9 +136,11 @@ class DisruptorBot(Plugin):
         self.manual_user_ratelimits = defaultdict(lambda: ManualRateLimit(
             rate=float(self.config["user_ratelimit.rate"]),
             per=float(self.config["user_ratelimit.per"])))
+        self.disrupt_probability = float(self.config["disrupt_probability"])
         self.cache = []
         self.handled_ids = set()
         self.reload_lock = asyncio.Lock()
+        random.seed()
 
         await self.load_disruption_content()
 
@@ -211,6 +215,9 @@ class DisruptorBot(Plugin):
             await evt.reply(self.config["user_ratelimit.message"])
 
     async def disrupt(self, room_id: RoomID) -> None:
+        if random.next() > self.disrupt_probability:
+            return 
+        else:  
         disruption_content = self.cache.pop()
         if len(self.cache) < 5:
             asyncio.ensure_future(self.reload_disruption_content(), loop=self.loop)
