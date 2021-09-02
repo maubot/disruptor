@@ -216,8 +216,7 @@ class DisruptorBot(Plugin):
 
     async def disrupt(self, room_id: RoomID) -> None:
         if random.next() > self.disrupt_probability:
-            return 
-        else:  
+            return
         disruption_content = self.cache.pop()
         if len(self.cache) < 5:
             asyncio.ensure_future(self.reload_disruption_content(), loop=self.loop)
