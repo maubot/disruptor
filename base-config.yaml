@@ -11,6 +11,8 @@ max_monologue_delay: 300
 # but monologues aren't disrupted even if the message count goes over the limit.
 disrupt_cooldown: 10
 # Rate limits for manual cat requests.
+disrupt_probability: 0.5
+# Probability of disruption.
 user_ratelimit:
   # How many cat pictures can be manually requested per time unit per room
   rate: 3
