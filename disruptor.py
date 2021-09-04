@@ -84,7 +84,7 @@ class MonologueInfo:
         return self.last_message != 0 and self.last_message + max_delay < time()
 
     def should_disrupt(self, min_count: int, disrupt_cooldown: int) -> bool:
-        return self.streak >= min_count and self.prev_disrupt + disrupt_cooldown < time()
+        return self.streak >= min_count and self.prev_disrupt + disrupt_cooldown < time() and random.next() < self.disrupt_probability
 
     def __repr__(self) -> str:
         return str(self)
@@ -215,8 +215,6 @@ class DisruptorBot(Plugin):
             await evt.reply(self.config["user_ratelimit.message"])
 
     async def disrupt(self, room_id: RoomID) -> None:
-        if random.next() > self.disrupt_probability:
-            return
         disruption_content = self.cache.pop()
         if len(self.cache) < 5:
             asyncio.ensure_future(self.reload_disruption_content(), loop=self.loop)
