@@ -24,3 +24,6 @@ room_ratelimit:
   rate: 3
   per: 86400
   message: This room has exceeded its daily cat allowance.
+# User agent for Reddit API requests.
+# Replace "unspecified" with your reddit /u/sername here.
+user_agent: Cat picture collector (https://github.com/maubot/disruptor hosted by unspecified)

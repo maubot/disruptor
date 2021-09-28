@@ -20,6 +20,7 @@ import asyncio
 
 from attr import dataclass
 import magic
+import aiohttp
 
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from mautrix.types import (EventType, UserID, RoomID, MediaMessageEventContent, ImageInfo,
@@ -43,6 +44,7 @@ class Config(BaseProxyConfig):
         helper.copy("min_monologue_size")
         helper.copy("max_monologue_delay")
         helper.copy("disrupt_cooldown")
+        helper.copy("user_agent")
         helper.copy("user_ratelimit.rate")
         helper.copy("user_ratelimit.per")
         helper.copy("user_ratelimit.message")
@@ -141,8 +143,13 @@ class DisruptorBot(Plugin):
         await self.load_disruption_content()
 
     async def fetch_posts(self, subreddit: str) -> dict:
-        resp = await self.http.get(f"https://www.reddit.com/r/{subreddit}/.json?raw_json=1")
-        return await resp.json()
+        resp = await self.http.get(f"https://www.reddit.com/r/{subreddit}/.json?raw_json=1",
+                                   headers={"User-Agent": self.config["user_agent"]})
+        try:
+            return await resp.json()
+        except aiohttp.ContentTypeError:
+            self.log.error("Got non-JSON response data with status %s while trying to find pictures", resp.status)
+            return {"data": {"children": []}}
 
     async def reload_disruption_content(self) -> None:
         async with self.reload_lock:
@@ -193,7 +200,7 @@ class DisruptorBot(Plugin):
                 monologue.reset()
 
     async def reupload(self, url: str) -> Tuple[ContentURI, str, bytes]:
-        resp = await self.http.get(url)
+        resp = await self.http.get(url, headers={"User-Agent": self.config["user_agent"]})
         data = await resp.read()
         mime_type = magic.from_buffer(data, mime=True)
         mxc = await self.client.upload_media(data, mime_type)
@@ -211,9 +218,15 @@ class DisruptorBot(Plugin):
             await evt.reply(self.config["user_ratelimit.message"])
 
     async def disrupt(self, room_id: RoomID) -> None:
+        if len(self.cache) == 0:
+           self.log.warning("Cache is empty, awaiting reload")
+           await self.reload_disruption_content()
+        if len(self.cache) == 0:
+           self.log.error("Failed to disrupt: cache is still empty after reload")
+           return
         disruption_content = self.cache.pop()
         if len(self.cache) < 5:
-            asyncio.ensure_future(self.reload_disruption_content(), loop=self.loop)
+            asyncio.create_task(self.reload_disruption_content())
         mxc, mime, data = await self.reupload(disruption_content["image"])
         tn_mxc, tn_mime, tn_data = await self.reupload(disruption_content["thumbnail"]["url"])
         info = ImageInfo(
