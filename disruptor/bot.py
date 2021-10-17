@@ -1,5 +1,5 @@
-# catdisruptor - A maubot plugin that disrupts monologues with cat pictures.
-# Copyright (C) 2019 Tulir Asokan
+# disruptor - A maubot plugin that disrupts monologues with cat pictures.
+# Copyright (C) 2021 Tulir Asokan
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -13,22 +13,23 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from typing import Dict, Set, List, Type, Tuple, Optional
+from typing import Dict, Type, Tuple, Optional
 from collections import defaultdict
 from time import time
 import asyncio
 
 from attr import dataclass
 import magic
-import aiohttp
 
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
-from mautrix.types import (EventType, UserID, RoomID, MediaMessageEventContent, ImageInfo,
-                           ThumbnailInfo, ContentURI, MessageType, GenericEvent,
-                           BaseMessageEventContent)
+from mautrix.types import (EventType, UserID, RoomID, MediaMessageEventContent, ContentURI,
+                           MessageType, EncryptedEvent, BaseMessageEventContent, RelationType,
+                           EncryptedMegolmEventContent)
 
 from maubot import Plugin, MessageEvent
 from maubot.handlers import event, command
+
+from .source import AbstractSource, CancelDisruption
 
 try:
     from PIL import Image
@@ -40,11 +41,11 @@ except ImportError:
 
 class Config(BaseProxyConfig):
     def do_update(self, helper: ConfigUpdateHelper) -> None:
-        helper.copy("subreddits")
+        helper.copy("source.type")
+        helper.copy("source.config")
         helper.copy("min_monologue_size")
         helper.copy("max_monologue_delay")
         helper.copy("disrupt_cooldown")
-        helper.copy("user_agent")
         helper.copy("user_ratelimit.rate")
         helper.copy("user_ratelimit.per")
         helper.copy("user_ratelimit.message")
@@ -90,7 +91,8 @@ class MonologueInfo:
         return str(self)
 
     def __str__(self) -> str:
-        return f"MonologueInfo(user_id={self.user_id}, streak={self.streak}, last_message={self.last_message}, prev_disrupt={self.prev_disrupt})"
+        return (f"MonologueInfo(user_id={self.user_id}, streak={self.streak}, "
+                f"last_message={self.last_message}, prev_disrupt={self.prev_disrupt})")
 
 
 @dataclass
@@ -121,8 +123,7 @@ class DisruptorBot(Plugin):
     monologue_size: Dict[RoomID, MonologueInfo]
     manual_room_ratelimits: Dict[RoomID, ManualRateLimit]
     manual_user_ratelimits: Dict[UserID, ManualRateLimit]
-    cache: List[dict]
-    handled_ids: Set[str]
+    source: AbstractSource
     reload_lock: asyncio.Lock
 
     async def start(self):
@@ -136,67 +137,34 @@ class DisruptorBot(Plugin):
         self.manual_user_ratelimits = defaultdict(lambda: ManualRateLimit(
             rate=float(self.config["user_ratelimit.rate"]),
             per=float(self.config["user_ratelimit.per"])))
-        self.cache = []
-        self.handled_ids = set()
         self.reload_lock = asyncio.Lock()
 
-        await self.load_disruption_content()
-
-    async def fetch_posts(self, subreddit: str) -> dict:
-        resp = await self.http.get(f"https://www.reddit.com/r/{subreddit}/.json?raw_json=1",
-                                   headers={"User-Agent": self.config["user_agent"]})
-        try:
-            return await resp.json()
-        except aiohttp.ContentTypeError:
-            self.log.error("Got non-JSON response data with status %s while trying to find pictures", resp.status)
-            return {"data": {"children": []}}
-
-    async def reload_disruption_content(self) -> None:
-        async with self.reload_lock:
-            if len(self.cache) < 5:
-                await self.load_disruption_content()
-
-    async def load_disruption_content(self) -> None:
-        for subreddit in self.config["subreddits"]:
-            self.log.debug(f"Caching data from {subreddit}...")
-            n = 0
-            listing = await self.fetch_posts(subreddit)
-            for post in listing["data"]["children"]:
-                data = post["data"]
-                if (data.get("post_hint", "") == "image"
-                        and not data.get("over_18", False)
-                        and data["id"] not in self.handled_ids):
-                    self.handled_ids.add(data["id"])
-                    self.cache.append({
-                        "image": data["url"],
-                        "thumbnail": {
-                            "url": data["thumbnail"],
-                            "width": data["thumbnail_width"],
-                            "height": data["thumbnail_height"],
-                        },
-                        "link": "https://www.reddit.com" + data["permalink"],
-                        "title": data["title"],
-                    })
-                    n += 1
-            self.log.info(f"{n} posts cached from {subreddit}")
+        self.source = AbstractSource.create(self, self.config["source"])
+        await self.source.prepare()
 
     @event.on(EventType.ROOM_ENCRYPTED)
-    async def encrypted_monologue_detector(self, evt: GenericEvent) -> None:
-        await self.monologue_detector(evt)
+    async def encrypted_monologue_detector(self, evt: EncryptedEvent) -> None:
+        if (isinstance(evt.content, EncryptedMegolmEventContent)
+                and evt.content.relates_to.rel_type == RelationType.REPLACE):
+            return
+        await self.monologue_detector(evt.sender, evt.room_id)
 
     @event.on(EventType.ROOM_MESSAGE)
-    async def monologue_detector(self, evt: MessageEvent) -> None:
+    async def normal_monologue_detector(self, evt: MessageEvent) -> None:
         if isinstance(evt.content, BaseMessageEventContent) and evt.content.get_edit():
             return
-        monologue = self.monologue_size[evt.room_id]
+        await self.monologue_detector(evt.sender, evt.room_id)
+
+    async def monologue_detector(self, user_id: UserID, room_id: RoomID) -> None:
+        monologue = self.monologue_size[room_id]
         if monologue.is_outdated(self.config["max_monologue_delay"]):
             monologue.reset()
-        monologue.message(evt.sender)
+        monologue.message(user_id)
         async with monologue.lock:
             if monologue.should_disrupt(self.config["min_monologue_size"],
                                         self.config["disrupt_cooldown"]):
-                self.log.debug(f"Disrupting monologue in {evt.room_id}: {monologue}")
-                await self.disrupt(evt.room_id)
+                self.log.debug(f"Disrupting monologue in {room_id}: {monologue}")
+                await self.disrupt(room_id)
                 monologue.reset()
 
     async def reupload(self, url: str) -> Tuple[ContentURI, str, bytes]:
@@ -218,35 +186,17 @@ class DisruptorBot(Plugin):
             await evt.reply(self.config["user_ratelimit.message"])
 
     async def disrupt(self, room_id: RoomID) -> None:
-        if len(self.cache) == 0:
-           self.log.warning("Cache is empty, awaiting reload")
-           await self.reload_disruption_content()
-        if len(self.cache) == 0:
-           self.log.error("Failed to disrupt: cache is still empty after reload")
-           return
-        disruption_content = self.cache.pop()
-        if len(self.cache) < 5:
-            asyncio.create_task(self.reload_disruption_content())
-        mxc, mime, data = await self.reupload(disruption_content["image"])
-        tn_mxc, tn_mime, tn_data = await self.reupload(disruption_content["thumbnail"]["url"])
-        info = ImageInfo(
-            size=len(data),
-            mimetype=mime,
-            thumbnail_url=tn_mxc,
-            thumbnail_info=ThumbnailInfo(
-                mimetype=tn_mime,
-                size=len(tn_data),
-                width=disruption_content["thumbnail"]["width"],
-                height=disruption_content["thumbnail"]["height"],
-            ),
-        )
-        if Image is not None:
-            img = Image.open(BytesIO(data))
-            info.width, info.height = img.size
-        await self.client.send_message_event(
-            room_id, EventType.ROOM_MESSAGE, MediaMessageEventContent(
-                url=mxc, info=info, msgtype=MessageType.IMAGE,
-                body=disruption_content["title"]))
+        try:
+            image = await self.source.fetch()
+        except CancelDisruption:
+            return
+        except Exception:
+            self.log.exception("Failed to fetch image for disruption")
+            return
+        content = MediaMessageEventContent(body=image.title, url=image.url, info=image.info,
+                                           msgtype=MessageType.IMAGE,
+                                           external_url=image.external_url)
+        await self.client.send_message_event(room_id, EventType.ROOM_MESSAGE, content)
 
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:

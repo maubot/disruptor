@@ -1,8 +1,9 @@
-# List of subreddits to fetch images from.
-subreddits:
-- cats
-- catpictures
-- catpics
+# Image source configuration
+source:
+  type: unsplash
+  config:
+    topics:
+    - animals/cat
 # Number of messages before messages are considered a monologue that needs to be disrupted.
 min_monologue_size: 10
 # Maximum number of seconds between messages for a monologue to end.
@@ -24,6 +25,3 @@ room_ratelimit:
   rate: 3
   per: 86400
   message: This room has exceeded its daily cat allowance.
-# User agent for Reddit API requests.
-# Replace "unspecified" with your reddit /u/sername here.
-user_agent: Cat picture collector (https://github.com/maubot/disruptor hosted by unspecified)
