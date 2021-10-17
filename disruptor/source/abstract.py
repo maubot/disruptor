@@ -103,7 +103,7 @@ class AbstractSource(ABC):
                 title = self._get_filename(url, resp, info.mimetype)
         if dimensions:
             info.width, info.height = dimensions
-        elif Image:
+        elif Pillow:
             img = Pillow.open(BytesIO(data))
             info.width, info.height = img.size
         mxc = await self.bot.client.upload_media(data, info.mimetype)
