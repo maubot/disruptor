@@ -81,7 +81,7 @@ class AbstractSource(ABC):
         if not filename:
             filename = (resp.url or url).path.split("/")[-1]
         if "." not in filename:
-            filename += mimetypes.guess_extension(mimetype)
+            filename += mimetypes.guess_extension(mimetype) or ""
         return filename
 
     async def _reupload(self, url: URL, title: Optional[str] = None,
