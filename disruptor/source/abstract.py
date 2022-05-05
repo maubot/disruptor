@@ -77,7 +77,7 @@ class AbstractSource(ABC):
     def create(cls, bot: 'DisruptorBot', config: Dict[str, Any]
                      ) -> 'AbstractSource':
         type_cls = cls.all[config["type"].lower()]
-        return type_cls(bot, config["config"])
+        return type_cls(bot, config.get("config", {}))
 
     @staticmethod
     def _get_filename(url: URL, resp: ClientResponse, mimetype: str) -> str:
