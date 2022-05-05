@@ -47,6 +47,7 @@ class CancelDisruption(Exception):
 
 
 class AbstractSource(ABC):
+    type_name: ClassVar[str] = None
     all: ClassVar[Dict[str, Type['AbstractSource']]] = {}
     bot: 'DisruptorBot'
     log: TraceLogger

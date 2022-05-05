@@ -1,9 +1,17 @@
 # Image source configuration
 source:
-  type: unsplash
+  type: random
   config:
-    topics:
-    - animals/cat
+    sources:
+    - weight: 10
+      type: unsplash
+      config:
+        topics:
+        - animals/cat
+    - weight: 2
+      type: url
+      config:
+        url: https://display-a.sand.cat/
 # Number of messages before messages are considered a monologue that needs to be disrupted.
 min_monologue_size: 10
 # Maximum number of seconds between messages for a monologue to end.

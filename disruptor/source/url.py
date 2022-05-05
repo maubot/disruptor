@@ -1,5 +1,5 @@
 # disruptor - A maubot plugin that disrupts monologues with cat pictures.
-# Copyright (C) 2021 Tulir Asokan
+# Copyright (C) 2022 Tulir Asokan
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -13,21 +13,18 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from typing import ClassVar
 from yarl import URL
 
-from .url import URLSource
+from .abstract import AbstractSource, Image
 
 
-class Unsplash(URLSource):
+class URLSource(AbstractSource):
+    type_name: ClassVar[str] = "url"
+    url: URL
+
     async def prepare(self) -> None:
-        source = self.config.get("source", "featured")
-        url = URL("https://source.unsplash.com") / source
+        self.url = URL(self.config["url"])
 
-        dimensions = self.config.get("dimensions", None)
-        if dimensions:
-            url /= dimensions
-
-        topics = self.config.get("topics", [])
-        if not topics and "topic" in self.config:
-            topics = [self.config["topic"]]
-        self.url = url.with_query({key: "true" for key in topics})
+    async def fetch(self) -> Image:
+        return await self._reupload(self.url)
