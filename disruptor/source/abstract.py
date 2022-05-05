@@ -23,7 +23,7 @@ from aiohttp import ClientResponse
 from yarl import URL
 import magic
 
-from mautrix.types import ImageInfo, ContentURI
+from mautrix.types import ImageInfo, ContentURI, UserID, RoomID
 from mautrix.util.logging import TraceLogger
 
 try:
@@ -46,6 +46,11 @@ class CancelDisruption(Exception):
     pass
 
 
+class DisruptionContext(NamedTuple):
+    room_id: RoomID
+    user_id: UserID
+
+
 class AbstractSource(ABC):
     type_name: ClassVar[str] = None
     all: ClassVar[Dict[str, Type['AbstractSource']]] = {}
@@ -60,6 +65,9 @@ class AbstractSource(ABC):
 
     async def prepare(self) -> None:
         pass
+
+    async def fetch_with_context(self, ctx: DisruptionContext) -> Image:
+        return await self.fetch()
 
     @abstractmethod
     async def fetch(self) -> Image:

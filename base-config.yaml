@@ -11,7 +11,7 @@ source:
     - weight: 2
       type: url
       config:
-        url: https://display-a.sand.cat/
+        url: https://display-a.sand.cat/cat.php
 # Number of messages before messages are considered a monologue that needs to be disrupted.
 min_monologue_size: 10
 # Maximum number of seconds between messages for a monologue to end.

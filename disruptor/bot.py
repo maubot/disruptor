@@ -29,7 +29,7 @@ from mautrix.types import (EventType, UserID, RoomID, MediaMessageEventContent, 
 from maubot import Plugin, MessageEvent
 from maubot.handlers import event, command
 
-from .source import AbstractSource, CancelDisruption
+from .source import AbstractSource, CancelDisruption, DisruptionContext
 
 try:
     from PIL import Image
@@ -164,7 +164,7 @@ class DisruptorBot(Plugin):
             if monologue.should_disrupt(self.config["min_monologue_size"],
                                         self.config["disrupt_cooldown"]):
                 self.log.debug(f"Disrupting monologue in {room_id}: {monologue}")
-                await self.disrupt(room_id)
+                await self.disrupt(user_id, room_id)
                 monologue.reset()
 
     async def reupload(self, url: str) -> Tuple[ContentURI, str, bytes]:
@@ -178,16 +178,17 @@ class DisruptorBot(Plugin):
     async def cat_command(self, evt: MessageEvent, _: str) -> None:
         if self.manual_user_ratelimits[evt.sender].request():
             if self.manual_room_ratelimits[evt.room_id].request():
-                await self.disrupt(evt.room_id)
+                await self.disrupt(evt.sender, evt.room_id)
             else:
                 await evt.reply(self.config["room_ratelimit.message"])
                 self.manual_user_ratelimits[evt.sender].allowance += 1
         else:
             await evt.reply(self.config["user_ratelimit.message"])
 
-    async def disrupt(self, room_id: RoomID) -> None:
+    async def disrupt(self, user_id: UserID, room_id: RoomID) -> None:
+        ctx = DisruptionContext(user_id=user_id, room_id=room_id)
         try:
-            image = await self.source.fetch()
+            image = await self.source.fetch_with_context(ctx)
         except CancelDisruption:
             return
         except Exception:

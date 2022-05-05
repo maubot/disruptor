@@ -15,10 +15,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from yarl import URL
 
-from .url import URLSource
+from .url import URLSource, AbstractSource
 
 
-class Unsplash(URLSource):
+class Unsplash(URLSource, AbstractSource):
+    type_name = None
+
     async def prepare(self) -> None:
         source = self.config.get("source", "featured")
         url = URL("https://source.unsplash.com") / source

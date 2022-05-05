@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import random
 
-from .abstract import AbstractSource, Image
+from .abstract import AbstractSource, Image, DisruptionContext
 
 
 class Random(AbstractSource):
@@ -37,6 +37,9 @@ class Random(AbstractSource):
         weight_sum = sum(int_weights)
         self.weights = [weight / weight_sum for weight in int_weights]
 
-    async def fetch(self) -> Image:
+    async def fetch_with_context(self, ctx: DisruptionContext | None = None) -> Image:
         source = random.choices(self.sources, self.weights, k=1)[0]
-        return await source.fetch()
+        return await source.fetch_with_context(ctx)
+
+    async def fetch(self) -> Image:
+        return await self.fetch_with_context(None)
