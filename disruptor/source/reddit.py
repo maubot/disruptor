@@ -19,6 +19,8 @@ import asyncio
 from yarl import URL
 import aiohttp
 
+from mautrix.util import background_task
+
 from .abstract import AbstractSource, Image, CancelDisruption
 
 
@@ -79,5 +81,5 @@ class Reddit(AbstractSource):
             raise CancelDisruption()
         disruption_content = self.cache.pop()
         if len(self.cache) < 5:
-            asyncio.create_task(self.reload_disruption_content())
+            background_task.create(self.reload_disruption_content())
         return await self._reupload(**disruption_content["image"])

@@ -17,6 +17,8 @@ from typing import Deque
 from collections import deque
 import asyncio
 
+from mautrix.util import background_task
+
 from .abstract import AbstractSource, CancelDisruption, Image
 
 
@@ -54,7 +56,7 @@ class Cache(AbstractSource):
                 self.log.debug("Fetching additional image after successful fetch "
                                "to cover earlier error")
                 self.fetch_errors -= 1
-                asyncio.create_task(self.fetch_to_cache())
+                background_task.create(self.fetch_to_cache())
 
     async def fetch(self) -> Image:
         try:
@@ -64,5 +66,5 @@ class Cache(AbstractSource):
             # TODO try refetching at some point
             raise CancelDisruption()
         self.log.debug("Fetching image to refill cache")
-        asyncio.create_task(self.fetch_to_cache())
+        background_task.create(self.fetch_to_cache())
         return image
