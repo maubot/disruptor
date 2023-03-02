@@ -93,12 +93,13 @@ class AbstractSource(ABC):
             filename += mimetypes.guess_extension(mimetype) or ""
         return filename
 
-    async def _reupload(self, url: URL, title: Optional[str] = None,
+    async def _reupload(self, url: URL, title: Optional[str] = None, blurhash: Optional[str] = None,
                         dimensions: Optional[Tuple[int, int]] = None,
                         external_url: Optional[str] = None,
                         thumbnail_url: Optional[URL] = None,
                         thumbnail_dimensions: Optional[Tuple[int, int]] = None,
                         headers: Optional[Dict[str, str]] = None) -> Image:
+        self.log.debug(f"Reuploading {title} from {url}")
         info = ImageInfo()
         if "user_agent" in self.config:
             headers["User-Agent"] = self.config["user_agent"]
@@ -121,4 +122,7 @@ class AbstractSource(ABC):
                                              dimensions=thumbnail_dimensions)
             info.thumbnail_url = thumbnail.url
             info.thumbnail_info = thumbnail.info
+        if blurhash:
+            info["blurhash"] = blurhash
+            info["xyz.amorgan.blurhash"] = blurhash
         return Image(url=mxc, info=info, title=title, external_url=external_url)

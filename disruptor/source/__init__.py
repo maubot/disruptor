@@ -1,4 +1,5 @@
 from .abstract import AbstractSource, CancelDisruption, DisruptionContext
+from .unsplash_legacy import UnsplashLegacy
 from .unsplash import Unsplash
 from .reddit import Reddit
 from .cache import Cache
