@@ -32,3 +32,5 @@ room_ratelimit:
   rate: 3
   per: 86400
   message: This room has exceeded its daily cat allowance.
+# The regex for manual cat requests.
+manual_request_regex: '^\U0001f408\ufe0f?$'

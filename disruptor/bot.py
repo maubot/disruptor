@@ -17,6 +17,7 @@ from typing import Dict, Type, Tuple, Optional
 from collections import defaultdict
 from time import time
 import asyncio
+import re
 
 from attr import dataclass
 import magic
@@ -52,6 +53,7 @@ class Config(BaseProxyConfig):
         helper.copy("room_ratelimit.rate")
         helper.copy("room_ratelimit.per")
         helper.copy("room_ratelimit.message")
+        helper.copy("manual_request_regex")
 
 
 class MonologueInfo:
@@ -125,10 +127,11 @@ class DisruptorBot(Plugin):
     manual_user_ratelimits: Dict[UserID, ManualRateLimit]
     source: AbstractSource
     reload_lock: asyncio.Lock
+    manual_request_regex: re.Pattern | None
 
     async def start(self):
         await super().start()
-        self.config.load_and_update()
+        self.on_external_config_update()
 
         self.monologue_size = defaultdict(lambda: MonologueInfo())
         self.manual_room_ratelimits = defaultdict(lambda: ManualRateLimit(
@@ -142,6 +145,11 @@ class DisruptorBot(Plugin):
         self.source = AbstractSource.create(self, self.config["source"])
         await self.source.prepare()
 
+    def on_external_config_update(self) -> None:
+        self.config.load_and_update()
+        pattern = self.config["manual_request_regex"]
+        self.manual_request_regex = re.compile(pattern) if pattern else None
+
     @event.on(EventType.ROOM_ENCRYPTED)
     async def encrypted_monologue_detector(self, evt: EncryptedEvent) -> None:
         if (isinstance(evt.content, EncryptedMegolmEventContent)
@@ -151,6 +159,8 @@ class DisruptorBot(Plugin):
 
     @event.on(EventType.ROOM_MESSAGE)
     async def normal_monologue_detector(self, evt: MessageEvent) -> None:
+        if await self._detect_cat_command(evt):
+            return
         if evt.get("mautrix", {}).get("was_encrypted", False):
             return
         if isinstance(evt.content, BaseMessageEventContent) and evt.content.get_edit():
@@ -176,8 +186,15 @@ class DisruptorBot(Plugin):
         mxc = await self.client.upload_media(data, mime_type)
         return mxc, mime_type, data
 
-    @command.passive(r"^\U0001f408\ufe0f?$")
-    async def cat_command(self, evt: MessageEvent, _: str) -> None:
+    async def _detect_cat_command(self, evt: MessageEvent) -> bool:
+        if (
+            evt.sender == self.client.mxid
+            or evt.content.msgtype != MessageType.TEXT
+            or not evt.content.body
+            or not self.manual_request_regex
+            or not self.manual_request_regex.fullmatch(evt.content.body)
+        ):
+            return False
         if self.manual_user_ratelimits[evt.sender].request():
             if self.manual_room_ratelimits[evt.room_id].request():
                 await self.disrupt(evt.sender, evt.room_id)
@@ -186,6 +203,7 @@ class DisruptorBot(Plugin):
                 self.manual_user_ratelimits[evt.sender].allowance += 1
         else:
             await evt.reply(self.config["user_ratelimit.message"])
+        return True
 
     async def disrupt(self, user_id: UserID, room_id: RoomID) -> None:
         ctx = DisruptionContext(user_id=user_id, room_id=room_id)
