@@ -17,7 +17,6 @@ from typing import NamedTuple, Tuple, Type, Optional, Dict, Any, ClassVar, TYPE_
 from abc import ABC, abstractmethod
 from io import BytesIO
 import mimetypes
-import cgi
 
 from aiohttp import ClientResponse
 from yarl import URL
@@ -81,12 +80,7 @@ class AbstractSource(ABC):
 
     @staticmethod
     def _get_filename(url: URL, resp: ClientResponse, mimetype: str) -> str:
-        filename = None
-        try:
-            _, params = cgi.parse_header(resp.headers["Content-Disposition"])
-            filename = params.get("filename")
-        except KeyError:
-            pass
+        filename = resp.content_disposition.filename if resp.content_disposition else ""
         if not filename:
             filename = (resp.url or url).path.split("/")[-1]
         if "." not in filename:
