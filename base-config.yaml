@@ -4,10 +4,9 @@ source:
   config:
     sources:
     - weight: 10
-      type: unsplash
+      type: url
       config:
-        topics:
-        - animals/cat
+        url: https://loremflickr.com/500/500/cat
     - weight: 2
       type: url
       config:
