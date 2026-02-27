@@ -151,6 +151,8 @@ class DisruptorBot(Plugin):
 
     @event.on(EventType.ROOM_MESSAGE)
     async def normal_monologue_detector(self, evt: MessageEvent) -> None:
+        if evt.get("mautrix", {}).get("was_encrypted", False):
+            return
         if isinstance(evt.content, BaseMessageEventContent) and evt.content.get_edit():
             return
         await self.monologue_detector(evt.sender, evt.room_id)
