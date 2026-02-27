@@ -13,7 +13,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import time
 from yarl import URL
 
 from .url import URLSource, AbstractSource
@@ -23,26 +22,14 @@ class UnsplashLegacy(URLSource, AbstractSource):
     type_name = "unsplash"
 
     async def prepare(self) -> None:
-        # source.unsplash.com has been discontinued.
-        # We replace it with loremflickr.com as a fallback to prevent breakage.
-        url_str = "https://loremflickr.com"
+        source = self.config.get("source", "featured")
+        url = URL("https://loremflickr.com") / source
 
-        dimensions = self.config.get("dimensions", "800x600")
+        dimensions = self.config.get("dimensions", None)
         if dimensions:
-            dimensions = dimensions.replace("x", "/")
-            url_str += f"/{dimensions}"
+            url /= dimensions
 
         topics = self.config.get("topics", [])
         if not topics and "topic" in self.config:
             topics = [self.config["topic"]]
-
-        if topics:
-            # Unsplash topics were often format "animals/cat". Extract last part.
-            keywords = ",".join(t.split("/")[-1] for t in topics)
-            url_str += f"/{keywords}"
-
-        self.url = URL(url_str)
-
-    async def fetch(self):
-        # Override fetch to append a random query param to circumvent caching
-        return await self._reupload(self.url.with_query({"random": str(time.time())}))
+        self.url = url.with_query({key: "true" for key in topics})
